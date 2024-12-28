@@ -424,7 +424,7 @@ synced_datetime
 from bronze.facility 
 where 
 facility_id is not null and 
-synced_datetime > (select max( synced_datetime) from gold.dim_facility);
+synced_datetime > (select coalesce(max(synced_datetime),'1900-01-01 00:00:00.000000') from gold.dim_facility);
 end;
 
 create or replace task process_dim_facility
@@ -495,7 +495,7 @@ from bronze.provider left outer join gold.dim_facility
 on (provider.facility_id = dim_facility.facility_id)
 where 
 provider.facility_id is not null and 
-provider.synced_datetime > (select max(synced_datetime) from gold.dim_facility);
+provider.synced_datetime > (select coalesce(max(synced_datetime),'1900-01-01 00:00:00.000000') from  gold.dim_facility);
 end;
 
 create or replace task process_dim_provider
@@ -570,7 +570,7 @@ from bronze.patient left outer join gold.dim_provider
 on (patient.PRIMARY_CARE_PROVIDER_ID = dim_provider.provider_id)
 where 
 patient.patient_id is not null and 
-patient.synced_datetime > (select max(synced_datetime) from gold.dim_patient);
+patient.synced_datetime > (select coalesce(max(synced_datetime),'1900-01-01 00:00:00.000000') from  gold.dim_patient);
 end;
 
 create or replace task process_dim_patient
@@ -654,6 +654,7 @@ source.synced_datetime);
 create or replace task process_care_gaps_data
 warehouse = COMPUTE_WH 
 after process_dim_patient
+when system$stream_has_data('CARE_GAPS_STREAM')
 as
 begin 
 truncate table silver.stg_care_gaps;
@@ -665,7 +666,7 @@ status,
 recommended_action, 
 identified_date,
 dim_patient.id as dim_patient_key,
-synced_datetime
+care_gaps_stream.synced_datetime
 from bronze.care_gaps_stream left outer join gold.dim_patient
 on (care_gaps_stream.patient_id = dim_patient.patient_id)
 where 
@@ -723,6 +724,7 @@ source.synced_datetime
 create or replace task process_claims_data
 warehouse = COMPUTE_WH 
 after process_dim_patient
+when system$stream_has_data('CLAIMS_STREAM')
 as
 begin 
 truncate table silver.stg_claims;
@@ -806,6 +808,7 @@ source.SYNCED_DATETIME
 create or replace task process_medical_events_data
 warehouse = COMPUTE_WH 
 after process_dim_patient
+when system$stream_has_data('MEDICAL_EVENTS_STREAM')
 as
 begin 
 truncate table silver.stg_medical_events;
@@ -896,6 +899,7 @@ source.synced_datetime
 create or replace task process_prescription_data
 warehouse = COMPUTE_WH 
 after process_dim_patient
+when system$stream_has_data('PHARMACY_STREAM')
 as
 begin 
 truncate table silver.stg_prescription;
@@ -967,3 +971,24 @@ source.dim_patient_key,
 source.dim_facility_key,
 source.synced_datetime
 );
+
+alter task process_prescription_fact resume;
+alter task process_prescription_data resume;
+
+alter task process_medical_events_fact resume;
+alter task process_medical_events_data resume;
+
+alter task process_claims_fact resume;
+alter task process_claims_data resume;
+
+alter task process_care_gaps_fact resume;
+alter task process_care_gaps_data resume;
+
+alter task process_dim_patient resume;
+alter task process_patient_data resume;
+
+alter task  process_dim_provider resume;
+alter task process_provider_data resume;
+
+alter task process_dim_facility resume;
+alter task process_facility_data resume;
